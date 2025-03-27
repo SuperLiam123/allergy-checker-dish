@@ -1,20 +1,17 @@
 
 import { Dish } from "@/data/dishes";
 
-// Replace with your own API key input method
-// This is a placeholder - you'll need to implement a proper key management approach
-let openaiApiKey = "";
+// Use the provided OpenAI API key
+let openaiApiKey = "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";
 
 export const setOpenAIKey = (key: string) => {
-  openaiApiKey = key;
+  // Only for backward compatibility, we're now using the hardcoded key
+  if (key) {
+    openaiApiKey = key;
+  }
 };
 
 export const checkDishWithGPT = async (dishName: string, allergyIds: string[]): Promise<Dish | null> => {
-  if (!openaiApiKey) {
-    console.warn("OpenAI API key not set");
-    return null;
-  }
-
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
