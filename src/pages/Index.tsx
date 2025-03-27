@@ -7,7 +7,7 @@ import ApiKeyInput from "@/components/ApiKeyInput";
 import { searchDish, checkAllergyInDish, Dish } from "@/data/dishes";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/ui/use-toast";
-import { checkDishWithGPT } from "@/services/openai";
+import { checkDishWithGPT, getApiStatus } from "@/services/openai";
 
 const Index = () => {
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
@@ -49,13 +49,15 @@ const Index = () => {
     
     // First try local database
     let dish = searchDish(dishName);
+    let source = "local database";
     
-    // If not found locally, try ChatGPT
-    if (!dish) {
+    // If not found locally and API is ready, try ChatGPT
+    if (!dish && getApiStatus() === 'ready') {
       try {
         const gptDish = await checkDishWithGPT(dishName, selectedAllergies);
         if (gptDish) {
           dish = gptDish;
+          source = "ChatGPT";
         }
       } catch (error) {
         console.error("Error fetching from ChatGPT:", error);
@@ -73,10 +75,29 @@ const Index = () => {
       
       setHasAllergies(allergyResults);
       setStatus('found');
+      
+      toast({
+        title: "Dish Found",
+        description: `"${dish.name}" information found in ${source}.`,
+      });
     } else {
       setFoundDish(null);
       setHasAllergies({});
       setStatus('not-found');
+      
+      if (getApiStatus() !== 'ready') {
+        toast({
+          title: "Dish Not Found",
+          description: "The dish wasn't found in our local database and ChatGPT is currently unavailable.",
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Dish Not Found",
+          description: "We couldn't find this dish in our database or through ChatGPT. Try another dish or check spelling.",
+          variant: "destructive"
+        });
+      }
     }
     
     setIsLoading(false);

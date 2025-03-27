@@ -1,13 +1,18 @@
 
 import { Dish } from "@/data/dishes";
+import { toast } from "@/components/ui/use-toast";
 
 // Use the provided OpenAI API key
 let openaiApiKey = "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";
+let apiStatus: 'ready' | 'error' | 'quota-exceeded' = 'ready';
+
+export const getApiStatus = () => apiStatus;
 
 export const setOpenAIKey = (key: string) => {
   // Only for backward compatibility, we're now using the hardcoded key
   if (key) {
     openaiApiKey = key;
+    apiStatus = 'ready';
   }
 };
 
@@ -47,7 +52,25 @@ export const checkDishWithGPT = async (dishName: string, allergyIds: string[]): 
     });
 
     if (!response.ok) {
-      console.error("OpenAI API error:", response.statusText);
+      const errorData = await response.json();
+      console.error("OpenAI API error:", errorData);
+      
+      // Handle quota exceeded error
+      if (errorData.error?.code === "insufficient_quota") {
+        apiStatus = 'quota-exceeded';
+        toast({
+          title: "API Quota Exceeded",
+          description: "The OpenAI API quota has been exceeded. The app will use local database only.",
+          variant: "destructive"
+        });
+      } else {
+        apiStatus = 'error';
+        toast({
+          title: "API Error",
+          description: "There was an error connecting to OpenAI. The app will use local database only.",
+          variant: "destructive"
+        });
+      }
       return null;
     }
 
@@ -68,6 +91,7 @@ export const checkDishWithGPT = async (dishName: string, allergyIds: string[]): 
     }
   } catch (error) {
     console.error("Error calling OpenAI API:", error);
+    apiStatus = 'error';
     return null;
   }
 };
