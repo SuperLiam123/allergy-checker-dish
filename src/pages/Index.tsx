@@ -3,49 +3,83 @@ import { useState, useEffect } from "react";
 import AllergySelector from "@/components/AllergySelector";
 import DishSearch from "@/components/DishSearch";
 import Results from "@/components/Results";
+import ApiKeyInput from "@/components/ApiKeyInput";
 import { searchDish, checkAllergyInDish, Dish } from "@/data/dishes";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "@/components/ui/use-toast";
+import { checkDishWithGPT } from "@/services/openai";
 
 const Index = () => {
-  const [selectedAllergy, setSelectedAllergy] = useState<string | null>(null);
+  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [foundDish, setFoundDish] = useState<Dish | null>(null);
-  const [hasAllergy, setHasAllergy] = useState<boolean | null>(null);
+  const [hasAllergies, setHasAllergies] = useState<{[key: string]: boolean}>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [status, setStatus] = useState<'initial' | 'not-found' | 'found'>('initial');
 
   const handleAllergySelect = (allergyId: string) => {
-    setSelectedAllergy(allergyId);
-    // Reset search results when changing allergy
+    setSelectedAllergies(prev => {
+      if (prev.includes(allergyId)) {
+        return prev.filter(id => id !== allergyId);
+      } else {
+        return [...prev, allergyId];
+      }
+    });
+    
+    // Reset search results when changing allergies
     if (foundDish) {
       setFoundDish(null);
-      setHasAllergy(null);
+      setHasAllergies({});
       setStatus('initial');
     }
   };
 
-  const handleSearch = (dishName: string) => {
-    if (!selectedAllergy) return;
+  const handleSearch = async (dishName: string) => {
+    if (selectedAllergies.length === 0) {
+      toast({
+        title: "No allergies selected",
+        description: "Please select at least one allergy to check.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setSearchQuery(dishName);
     setIsLoading(true);
     
-    // Simulate a search delay for better UX
-    setTimeout(() => {
-      const dish = searchDish(dishName);
-      
-      if (dish) {
-        setFoundDish(dish);
-        setHasAllergy(checkAllergyInDish(dish, selectedAllergy));
-        setStatus('found');
-      } else {
-        setFoundDish(null);
-        setHasAllergy(null);
-        setStatus('not-found');
+    // First try local database
+    let dish = searchDish(dishName);
+    
+    // If not found locally, try ChatGPT
+    if (!dish) {
+      try {
+        const gptDish = await checkDishWithGPT(dishName, selectedAllergies);
+        if (gptDish) {
+          dish = gptDish;
+        }
+      } catch (error) {
+        console.error("Error fetching from ChatGPT:", error);
       }
+    }
+    
+    if (dish) {
+      setFoundDish(dish);
       
-      setIsLoading(false);
-    }, 1000);
+      // Check each selected allergy
+      const allergyResults: {[key: string]: boolean} = {};
+      selectedAllergies.forEach(allergyId => {
+        allergyResults[allergyId] = checkAllergyInDish(dish, allergyId);
+      });
+      
+      setHasAllergies(allergyResults);
+      setStatus('found');
+    } else {
+      setFoundDish(null);
+      setHasAllergies({});
+      setStatus('not-found');
+    }
+    
+    setIsLoading(false);
   };
 
   return (
@@ -56,22 +90,23 @@ const Index = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        <h1 className="text-4xl font-bold tracking-tight mb-3">Chinese Food Allergy Checker</h1>
+        <div className="flex items-center justify-center mb-3">
+          <h1 className="text-4xl font-bold tracking-tight">Chinese Food Allergy Checker</h1>
+        </div>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Check if your favorite Chinese dishes contain ingredients you're allergic to
         </p>
+        <div className="mt-4">
+          <ApiKeyInput />
+        </div>
       </motion.div>
 
       <AllergySelector 
-        selectedAllergy={selectedAllergy} 
+        selectedAllergies={selectedAllergies} 
         onAllergySelect={handleAllergySelect} 
       />
       
-      <AnimatePresence mode="wait">
-        {selectedAllergy && (
-          <DishSearch onSearch={handleSearch} isLoading={isLoading} />
-        )}
-      </AnimatePresence>
+      <DishSearch onSearch={handleSearch} isLoading={isLoading} />
 
       <AnimatePresence mode="wait">
         {status === 'not-found' && searchQuery && !isLoading && (
@@ -84,7 +119,7 @@ const Index = () => {
           >
             <h3 className="text-xl font-medium mb-2">Dish Not Found</h3>
             <p className="text-muted-foreground">
-              We couldn't find "{searchQuery}" in our database. Please try another dish or check your spelling.
+              We couldn't find "{searchQuery}" in our database or through AI assistance. Please try another dish or check your spelling.
             </p>
           </motion.div>
         )}
@@ -92,8 +127,7 @@ const Index = () => {
 
       <Results 
         dish={foundDish} 
-        allergyId={selectedAllergy} 
-        hasAllergy={hasAllergy} 
+        allergyResults={hasAllergies}
       />
       
       <motion.div 
