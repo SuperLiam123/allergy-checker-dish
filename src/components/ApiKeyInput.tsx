@@ -23,7 +23,7 @@ export function ApiKeyInput() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="text-xs">
+        <Button variant="ghost" size="sm" className="text-xs hidden">
           <Key className="h-3 w-3 mr-1" />
           API Status
         </Button>
